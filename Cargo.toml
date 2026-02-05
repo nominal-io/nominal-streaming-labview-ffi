@@ -1,0 +1,24 @@
+[package]
+name = "nominal-labview-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]  # Creates shared library (.dll/.so/.dylib)
+
+[dependencies]
+nominal-streaming = "0.7"
+tokio = { version = "1", features = ["full"] }
+once_cell = "1.19"
+parking_lot = "0.12"
+
+[profile.release]
+opt-level = 3        # Maximum optimization for desktop
+lto = true           # Link-time optimization
+codegen-units = 1    # Better optimization, slower compile
+
+[profile.release-rt]
+inherits = "release"
+opt-level = 'z'      # Optimize for size (RT targets)
+strip = true         # Remove debug symbols
+panic = 'abort'      # Smaller binary
