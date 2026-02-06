@@ -455,34 +455,48 @@ pub unsafe extern "C" fn nominal_shutdown(stream_handle: u64) -> c_int {
 /// 
 /// # Returns
 /// 0 on success, negative error code if no error or buffer too small
+
 #[no_mangle]
-pub unsafe extern "C" fn nominal_get_last_error(
+pub extern "C" fn nominal_get_last_error(
     buffer: *mut c_char,
     buffer_size: usize,
-) -> c_int {
+) -> i32 {
     if buffer.is_null() || buffer_size == 0 {
-        return ERROR_INVALID_PARAM;
+        return -3;
     }
 
-    LAST_ERROR.with(|e| {
-        if let Some(ref err) = *e.borrow() {
-            let c_string = match CString::new(err.as_str()) {
-                Ok(s) => s,
-                Err(_) => return ERROR_GENERIC,
-            };
-
-            let bytes = c_string.as_bytes_with_nul();
-            if bytes.len() > buffer_size {
-                return ERROR_INVALID_PARAM; // Buffer too small
+    LAST_ERROR.with(|last_error| {
+        let error_msg = last_error.borrow();
+        
+        // Handle Option<String>
+        let msg = match error_msg.as_ref() {
+            Some(s) => s,
+            None => {
+                // No error stored, write empty string
+                unsafe {
+                    *buffer = 0;
+                }
+                return -1;
             }
+        };
 
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), buffer as *mut u8, bytes.len());
-            SUCCESS
-        } else {
-            ERROR_GENERIC // No error set
+        let error_bytes = msg.as_bytes();
+        let copy_len = std::cmp::min(error_bytes.len(), buffer_size - 1);
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                error_bytes.as_ptr(),
+                buffer as *mut u8,
+                copy_len,
+            );
+            // Null terminate
+            *buffer.add(copy_len) = 0;
         }
+        
+        0
     })
 }
+
 
 // ============================================================================
 // Tests
