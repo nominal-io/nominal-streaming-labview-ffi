@@ -15,6 +15,7 @@
 		<Property Name="specify.custom.address" Type="Bool">false</Property>
 		<Item Name="example" Type="Folder">
 			<Item Name="Simple Stream.vi" Type="VI" URL="../example/Simple Stream.vi"/>
+			<Item Name="Multi Channel Stream.vi" Type="VI" URL="../example/Multi Channel Stream.vi"/>
 		</Item>
 		<Item Name="utility" Type="Folder">
 			<Item Name="Get UNIX Time in Nanoseconds.vi" Type="VI" URL="../utility/Get UNIX Time in Nanoseconds.vi"/>
