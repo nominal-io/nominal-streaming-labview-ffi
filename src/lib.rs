@@ -19,6 +19,7 @@ const ERROR_INVALID_HANDLE: c_int = -2;
 const ERROR_INVALID_PARAM: c_int = -3;
 const ERROR_RUNTIME: c_int = -4;
 const ERROR_IO: c_int = -5;
+const ERROR_NOT_SUPPORTED: c_int = -6;
 
 // ============================================================================
 // Thread-Local Error Storage
@@ -60,12 +61,9 @@ static STREAMS: Lazy<Mutex<HashMap<StreamHandle, Arc<NominalDatasetStream>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 // Store writers along with their stream and descriptor to maintain lifetimes
-// The writer has a lifetime tied to the stream and descriptor
 struct WriterState {
     stream: Arc<NominalDatasetStream>,
     descriptor: ChannelDescriptor,
-    // We can't store the writer directly due to lifetime constraints
-    // So we'll recreate it on each push operation
 }
 
 static WRITERS: Lazy<Mutex<HashMap<WriterHandle, Arc<Mutex<WriterState>>>>> =
@@ -123,19 +121,10 @@ fn parse_tags_csv(tags_csv: &str) -> Vec<(&str, &str)> {
 }
 
 // ============================================================================
-// FFI Functions
+// Core FFI Functions
 // ============================================================================
 
 /// Initialize a new Nominal stream
-/// 
-/// # Arguments
-/// * `token` - Nominal API token (can be null to use env var NOMINAL_TOKEN)
-/// * `dataset_rid` - Dataset RID (e.g., "ri.catalog.main.dataset....")
-/// * `fallback_file_path` - Path for fallback AVRO file (can be null for no fallback)
-/// * `out_stream_handle` - Output pointer for stream handle
-/// 
-/// # Returns
-/// 0 on success, negative error code on failure
 #[no_mangle]
 pub unsafe extern "C" fn nominal_init(
     token: *const c_char,
@@ -145,13 +134,11 @@ pub unsafe extern "C" fn nominal_init(
 ) -> c_int {
     clear_last_error();
 
-    // Validate output pointer
     if out_stream_handle.is_null() {
         set_last_error("Output handle pointer is null".to_string());
         return ERROR_INVALID_PARAM;
     }
 
-    // Parse token
     let token_str = if !token.is_null() {
         match c_str_to_string(token) {
             Ok(s) => Some(s),
@@ -164,7 +151,6 @@ pub unsafe extern "C" fn nominal_init(
         None
     };
 
-    // Parse dataset RID
     let dataset_rid_str = match c_str_to_string(dataset_rid) {
         Ok(s) => s,
         Err(e) => {
@@ -173,7 +159,6 @@ pub unsafe extern "C" fn nominal_init(
         }
     };
 
-    // Parse fallback path
     let fallback_path_str = if !fallback_file_path.is_null() {
         match c_str_to_string(fallback_file_path) {
             Ok(s) => Some(s),
@@ -186,21 +171,17 @@ pub unsafe extern "C" fn nominal_init(
         None
     };
 
-    // Build the stream
     let stream = RUNTIME.block_on(async {
         let mut builder = NominalDatasetStreamBuilder::new();
 
-        // Determine if we should stream to core
         let should_stream_to_core = token_str.is_some() || std::env::var("NOMINAL_TOKEN").is_ok();
 
         if should_stream_to_core {
-            // Get token (from param or env)
             let token_value = match token_str {
                 Some(t) => t,
                 None => std::env::var("NOMINAL_TOKEN").unwrap(),
             };
 
-            // Create BearerToken
             let bearer_token = match BearerToken::new(&token_value) {
                 Ok(t) => t,
                 Err(e) => {
@@ -209,7 +190,6 @@ pub unsafe extern "C" fn nominal_init(
                 }
             };
 
-            // Create ResourceIdentifier
             let rid = match ResourceIdentifier::new(&dataset_rid_str) {
                 Ok(r) => r,
                 Err(e) => {
@@ -218,18 +198,13 @@ pub unsafe extern "C" fn nominal_init(
                 }
             };
 
-            // Get current runtime handle
             let handle = tokio::runtime::Handle::current();
-
-            // Stream to core
             builder = builder.stream_to_core(bearer_token, rid, handle);
 
-            // Add file fallback if provided
             if let Some(ref path) = fallback_path_str {
                 builder = builder.with_file_fallback(path);
             }
         } else if let Some(ref path) = fallback_path_str {
-            // No token, just stream to file
             builder = builder.stream_to_file(path);
         } else {
             set_last_error("Either token or fallback file path must be provided".to_string());
@@ -244,7 +219,6 @@ pub unsafe extern "C" fn nominal_init(
         Err(e) => return e,
     };
 
-    // Allocate handle and store stream
     let handle = allocate_stream_handle();
     STREAMS.lock().insert(handle, Arc::new(stream));
 
@@ -253,15 +227,6 @@ pub unsafe extern "C" fn nominal_init(
 }
 
 /// Create a channel writer
-/// 
-/// # Arguments
-/// * `stream_handle` - Stream handle from nominal_init
-/// * `channel_name` - Name of the channel
-/// * `tags_csv` - Comma-separated key=value pairs (e.g., "exp=123,sensor=front")
-/// * `out_writer_handle` - Output pointer for writer handle
-/// 
-/// # Returns
-/// 0 on success, negative error code on failure
 #[no_mangle]
 pub unsafe extern "C" fn nominal_create_channel(
     stream_handle: u64,
@@ -271,13 +236,11 @@ pub unsafe extern "C" fn nominal_create_channel(
 ) -> c_int {
     clear_last_error();
 
-    // Validate output pointer
     if out_writer_handle.is_null() {
         set_last_error("Output handle pointer is null".to_string());
         return ERROR_INVALID_PARAM;
     }
 
-    // Get stream
     let stream = {
         let streams = STREAMS.lock();
         match streams.get(&stream_handle) {
@@ -289,7 +252,6 @@ pub unsafe extern "C" fn nominal_create_channel(
         }
     };
 
-    // Parse channel name
     let channel_name_str = match c_str_to_string(channel_name) {
         Ok(s) => s,
         Err(e) => {
@@ -298,7 +260,6 @@ pub unsafe extern "C" fn nominal_create_channel(
         }
     };
 
-    // Parse tags
     let tags_csv_str = if !tags_csv.is_null() {
         match c_str_to_string(tags_csv) {
             Ok(s) => s,
@@ -313,15 +274,12 @@ pub unsafe extern "C" fn nominal_create_channel(
 
     let tags = parse_tags_csv(&tags_csv_str);
 
-    // Create channel descriptor
     let descriptor = if tags.is_empty() {
         ChannelDescriptor::new(&channel_name_str)
     } else {
         ChannelDescriptor::with_tags(&channel_name_str, tags)
     };
 
-    // Allocate handle and store writer state
-    // We store the stream and descriptor, and create the writer on-demand
     let handle = allocate_writer_handle();
     let state = WriterState {
         stream: Arc::clone(&stream),
@@ -334,15 +292,6 @@ pub unsafe extern "C" fn nominal_create_channel(
 }
 
 /// Push a batch of double data points
-/// 
-/// # Arguments
-/// * `writer_handle` - Writer handle from nominal_create_channel
-/// * `timestamps_ns` - Array of timestamps in nanoseconds since Unix epoch
-/// * `values` - Array of double values
-/// * `count` - Number of points in the arrays
-/// 
-/// # Returns
-/// 0 on success, negative error code on failure
 #[no_mangle]
 pub unsafe extern "C" fn nominal_push_double_batch(
     writer_handle: u64,
@@ -352,17 +301,15 @@ pub unsafe extern "C" fn nominal_push_double_batch(
 ) -> c_int {
     clear_last_error();
 
-    // Validate pointers
     if timestamps_ns.is_null() || values.is_null() {
         set_last_error("Null pointer provided for data arrays".to_string());
         return ERROR_INVALID_PARAM;
     }
 
     if count == 0 {
-        return SUCCESS; // Nothing to do
+        return SUCCESS;
     }
 
-    // Get writer state
     let writer_arc = {
         let writers = WRITERS.lock();
         match writers.get(&writer_handle) {
@@ -374,11 +321,9 @@ pub unsafe extern "C" fn nominal_push_double_batch(
         }
     };
 
-    // Convert arrays to slices
     let timestamps_slice = std::slice::from_raw_parts(timestamps_ns, count);
     let values_slice = std::slice::from_raw_parts(values, count);
 
-    // Get the writer state and push each point
     let state_guard = writer_arc.lock();
     let mut writer = state_guard.stream.double_writer(&state_guard.descriptor);
     
@@ -392,17 +337,10 @@ pub unsafe extern "C" fn nominal_push_double_batch(
 }
 
 /// Close a channel writer and flush remaining data
-/// 
-/// # Arguments
-/// * `writer_handle` - Writer handle from nominal_create_channel
-/// 
-/// # Returns
-/// 0 on success, negative error code on failure
 #[no_mangle]
 pub unsafe extern "C" fn nominal_close_channel(writer_handle: u64) -> c_int {
     clear_last_error();
 
-    // Remove writer from registry
     let writer_arc = {
         let mut writers = WRITERS.lock();
         match writers.remove(&writer_handle) {
@@ -414,24 +352,15 @@ pub unsafe extern "C" fn nominal_close_channel(writer_handle: u64) -> c_int {
         }
     };
 
-    // Drop the writer - this should trigger any cleanup
     drop(writer_arc);
-
     SUCCESS
 }
 
 /// Shutdown stream and cleanup resources
-/// 
-/// # Arguments
-/// * `stream_handle` - Stream handle from nominal_init
-/// 
-/// # Returns
-/// 0 on success, negative error code on failure
 #[no_mangle]
 pub unsafe extern "C" fn nominal_shutdown(stream_handle: u64) -> c_int {
     clear_last_error();
 
-    // Remove stream from registry
     let _stream = {
         let mut streams = STREAMS.lock();
         match streams.remove(&stream_handle) {
@@ -443,40 +372,29 @@ pub unsafe extern "C" fn nominal_shutdown(stream_handle: u64) -> c_int {
         }
     };
 
-    // Stream will be dropped here, triggering cleanup
     SUCCESS
 }
 
 /// Get the last error message
-/// 
-/// # Arguments
-/// * `buffer` - Output buffer for error message
-/// * `buffer_size` - Size of the buffer
-/// 
-/// # Returns
-/// 0 on success, negative error code if no error or buffer too small
-
 #[no_mangle]
 pub extern "C" fn nominal_get_last_error(
     buffer: *mut c_char,
     buffer_size: usize,
 ) -> i32 {
     if buffer.is_null() || buffer_size == 0 {
-        return -3;
+        return ERROR_INVALID_PARAM;
     }
 
     LAST_ERROR.with(|last_error| {
         let error_msg = last_error.borrow();
         
-        // Handle Option<String>
         let msg = match error_msg.as_ref() {
             Some(s) => s,
             None => {
-                // No error stored, write empty string
                 unsafe {
                     *buffer = 0;
                 }
-                return -1;
+                return ERROR_GENERIC;
             }
         };
 
@@ -489,14 +407,327 @@ pub extern "C" fn nominal_get_last_error(
                 buffer as *mut u8,
                 copy_len,
             );
-            // Null terminate
             *buffer.add(copy_len) = 0;
         }
         
-        0
+        SUCCESS
     })
 }
 
+// ============================================================================
+// Lifecycle Control Functions
+// ============================================================================
+
+/// Flush all pending data for a stream
+#[no_mangle]
+pub unsafe extern "C" fn nominal_flush(stream_handle: u64) -> c_int {
+    clear_last_error();
+
+    let stream = {
+        let streams = STREAMS.lock();
+        match streams.get(&stream_handle) {
+            Some(s) => Arc::clone(s),
+            None => {
+                set_last_error(format!("Invalid stream handle: {}", stream_handle));
+                return ERROR_INVALID_HANDLE;
+            }
+        }
+    };
+
+    RUNTIME.block_on(async {
+        match stream.flush().await {
+            Ok(_) => SUCCESS,
+            Err(e) => {
+                set_last_error(format!("Flush failed: {}", e));
+                ERROR_RUNTIME
+            }
+        }
+    })
+}
+
+/// Flush a specific channel writer
+#[no_mangle]
+pub unsafe extern "C" fn nominal_flush_channel(writer_handle: u64) -> c_int {
+    clear_last_error();
+
+    let writer_arc = {
+        let writers = WRITERS.lock();
+        match writers.get(&writer_handle) {
+            Some(w) => Arc::clone(w),
+            None => {
+                set_last_error(format!("Invalid writer handle: {}", writer_handle));
+                return ERROR_INVALID_HANDLE;
+            }
+        }
+    };
+
+    let state_guard = writer_arc.lock();
+    
+    RUNTIME.block_on(async {
+        match state_guard.stream.flush().await {
+            Ok(_) => SUCCESS,
+            Err(e) => {
+                set_last_error(format!("Channel flush failed: {}", e));
+                ERROR_RUNTIME
+            }
+        }
+    })
+}
+
+// ============================================================================
+// Diagnostics & Monitoring Functions
+// ============================================================================
+
+/// Get the number of active stream handles
+#[no_mangle]
+pub extern "C" fn nominal_get_active_streams() -> c_int {
+    STREAMS.lock().len() as c_int
+}
+
+/// Get the number of active writer handles
+#[no_mangle]
+pub extern "C" fn nominal_get_active_writers() -> c_int {
+    WRITERS.lock().len() as c_int
+}
+
+/// Check if a stream handle is valid
+#[no_mangle]
+pub extern "C" fn nominal_is_stream_valid(stream_handle: u64) -> c_int {
+    let streams = STREAMS.lock();
+    if streams.contains_key(&stream_handle) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Check if a writer handle is valid
+#[no_mangle]
+pub extern "C" fn nominal_is_writer_valid(writer_handle: u64) -> c_int {
+    let writers = WRITERS.lock();
+    if writers.contains_key(&writer_handle) {
+        1
+    } else {
+        0
+    }
+}
+
+// ============================================================================
+// Bulk Operations Functions
+// ============================================================================
+
+/// Push batch of int64 data points
+#[no_mangle]
+pub unsafe extern "C" fn nominal_push_int64_batch(
+    writer_handle: u64,
+    timestamps_ns: *const u64,
+    values: *const i64,
+    count: usize,
+) -> c_int {
+    clear_last_error();
+
+    if timestamps_ns.is_null() || values.is_null() {
+        set_last_error("Null pointer provided for data arrays".to_string());
+        return ERROR_INVALID_PARAM;
+    }
+
+    if count == 0 {
+        return SUCCESS;
+    }
+
+    let writer_arc = {
+        let writers = WRITERS.lock();
+        match writers.get(&writer_handle) {
+            Some(w) => Arc::clone(w),
+            None => {
+                set_last_error(format!("Invalid writer handle: {}", writer_handle));
+                return ERROR_INVALID_HANDLE;
+            }
+        }
+    };
+
+    let timestamps_slice = std::slice::from_raw_parts(timestamps_ns, count);
+    let values_slice = std::slice::from_raw_parts(values, count);
+
+    let state_guard = writer_arc.lock();
+    let mut writer = state_guard.stream.int64_writer(&state_guard.descriptor);
+    
+    for i in 0..count {
+        let timestamp = Duration::from_nanos(timestamps_slice[i]);
+        let value = values_slice[i];
+        writer.push(timestamp, value);
+    }
+
+    SUCCESS
+}
+
+/// Push batch of boolean data points
+#[no_mangle]
+pub unsafe extern "C" fn nominal_push_bool_batch(
+    writer_handle: u64,
+    timestamps_ns: *const u64,
+    values: *const u8,  // 0 = false, non-zero = true
+    count: usize,
+) -> c_int {
+    clear_last_error();
+
+    if timestamps_ns.is_null() || values.is_null() {
+        set_last_error("Null pointer provided for data arrays".to_string());
+        return ERROR_INVALID_PARAM;
+    }
+
+    if count == 0 {
+        return SUCCESS;
+    }
+
+    let writer_arc = {
+        let writers = WRITERS.lock();
+        match writers.get(&writer_handle) {
+            Some(w) => Arc::clone(w),
+            None => {
+                set_last_error(format!("Invalid writer handle: {}", writer_handle));
+                return ERROR_INVALID_HANDLE;
+            }
+        }
+    };
+
+    let timestamps_slice = std::slice::from_raw_parts(timestamps_ns, count);
+    let values_slice = std::slice::from_raw_parts(values, count);
+
+    let state_guard = writer_arc.lock();
+    let mut writer = state_guard.stream.bool_writer(&state_guard.descriptor);
+    
+    for i in 0..count {
+        let timestamp = Duration::from_nanos(timestamps_slice[i]);
+        let value = values_slice[i] != 0;
+        writer.push(timestamp, value);
+    }
+
+    SUCCESS
+}
+
+/// Push batch of string data points
+#[no_mangle]
+pub unsafe extern "C" fn nominal_push_string_batch(
+    writer_handle: u64,
+    timestamps_ns: *const u64,
+    values: *const *const c_char,  // Array of C string pointers
+    count: usize,
+) -> c_int {
+    clear_last_error();
+
+    if timestamps_ns.is_null() || values.is_null() {
+        set_last_error("Null pointer provided for data arrays".to_string());
+        return ERROR_INVALID_PARAM;
+    }
+
+    if count == 0 {
+        return SUCCESS;
+    }
+
+    let writer_arc = {
+        let writers = WRITERS.lock();
+        match writers.get(&writer_handle) {
+            Some(w) => Arc::clone(w),
+            None => {
+                set_last_error(format!("Invalid writer handle: {}", writer_handle));
+                return ERROR_INVALID_HANDLE;
+            }
+        }
+    };
+
+    let timestamps_slice = std::slice::from_raw_parts(timestamps_ns, count);
+    let values_slice = std::slice::from_raw_parts(values, count);
+
+    let state_guard = writer_arc.lock();
+    let mut writer = state_guard.stream.string_writer(&state_guard.descriptor);
+    
+    for i in 0..count {
+        let timestamp = Duration::from_nanos(timestamps_slice[i]);
+        
+        // Convert C string to Rust string
+        let value_str = match c_str_to_string(values_slice[i]) {
+            Ok(s) => s,
+            Err(e) => {
+                set_last_error(format!("Invalid string at index {}: {}", i, e));
+                return ERROR_INVALID_PARAM;
+            }
+        };
+        
+        writer.push(timestamp, &value_str);
+    }
+
+    SUCCESS
+}
+
+// ============================================================================
+// Stream Information Functions
+// ============================================================================
+
+/// Get the channel name for a writer
+#[no_mangle]
+pub unsafe extern "C" fn nominal_get_channel_name(
+    writer_handle: u64,
+    buffer: *mut c_char,
+    buffer_size: usize,
+) -> c_int {
+    clear_last_error();
+
+    if buffer.is_null() || buffer_size == 0 {
+        set_last_error("Invalid buffer parameters".to_string());
+        return ERROR_INVALID_PARAM;
+    }
+
+    let writer_arc = {
+        let writers = WRITERS.lock();
+        match writers.get(&writer_handle) {
+            Some(w) => Arc::clone(w),
+            None => {
+                set_last_error(format!("Invalid writer handle: {}", writer_handle));
+                return ERROR_INVALID_HANDLE;
+            }
+        }
+    };
+
+    let state_guard = writer_arc.lock();
+    let channel_name = state_guard.descriptor.name();
+    
+    let name_bytes = channel_name.as_bytes();
+    let copy_len = std::cmp::min(name_bytes.len(), buffer_size - 1);
+
+    std::ptr::copy_nonoverlapping(
+        name_bytes.as_ptr(),
+        buffer as *mut u8,
+        copy_len,
+    );
+    *buffer.add(copy_len) = 0;
+
+    SUCCESS
+}
+
+/// Get library version information
+#[no_mangle]
+pub unsafe extern "C" fn nominal_get_version(
+    buffer: *mut c_char,
+    buffer_size: usize,
+) -> c_int {
+    if buffer.is_null() || buffer_size == 0 {
+        return ERROR_INVALID_PARAM;
+    }
+
+    let version = env!("CARGO_PKG_VERSION");
+    let version_bytes = version.as_bytes();
+    let copy_len = std::cmp::min(version_bytes.len(), buffer_size - 1);
+
+    std::ptr::copy_nonoverlapping(
+        version_bytes.as_ptr(),
+        buffer as *mut u8,
+        copy_len,
+    );
+    *buffer.add(copy_len) = 0;
+
+    SUCCESS
+}
 
 // ============================================================================
 // Tests
