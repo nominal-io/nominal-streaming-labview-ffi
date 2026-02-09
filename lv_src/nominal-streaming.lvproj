@@ -1,6 +1,9 @@
 ﻿<?xml version='1.0' encoding='UTF-8'?>
 <Project Type="Project" LVVersion="20008000">
+	<Property Name="NI.LV.All.SourceOnly" Type="Bool">true</Property>
+	<Property Name="NI.Project.Description" Type="Str"></Property>
 	<Item Name="My Computer" Type="My Computer">
+		<Property Name="NI.SortType" Type="Int">3</Property>
 		<Property Name="server.app.propertiesEnabled" Type="Bool">true</Property>
 		<Property Name="server.control.propertiesEnabled" Type="Bool">true</Property>
 		<Property Name="server.tcp.enabled" Type="Bool">false</Property>
@@ -15,6 +18,7 @@
 		</Item>
 		<Item Name="utility" Type="Folder">
 			<Item Name="Get UNIX Time in Nanoseconds.vi" Type="VI" URL="../utility/Get UNIX Time in Nanoseconds.vi"/>
+			<Item Name="Waveform to ns timestamp.vi" Type="VI" URL="../utility/Waveform to ns timestamp.vi"/>
 		</Item>
 		<Item Name="Channel.lvclass" Type="LVClass" URL="../Channel/Channel.lvclass"/>
 		<Item Name="Nominal Streaming.lvclass" Type="LVClass" URL="../Nominal Streaming/Nominal Streaming.lvclass"/>
