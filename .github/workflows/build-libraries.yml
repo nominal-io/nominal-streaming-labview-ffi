@@ -1,0 +1,110 @@
+name: Build Shared Libraries
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # Windows 32-bit
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            extension: dll
+            
+          # Windows 64-bit
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            extension: dll
+            
+          # Linux 64-bit
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            extension: so
+            
+          # macOS Apple Silicon
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            extension: dylib
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Python (for PyO3)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Nominal SDK
+        run: pip install nominal
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Find library file (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          LIB_FILE=$(find target/${{ matrix.target }}/release -name "lib*.${{ matrix.extension }}" -type f | head -n 1)
+          echo "LIB_PATH=$LIB_FILE" >> $GITHUB_ENV
+          echo "LIB_NAME=$(basename $LIB_FILE)" >> $GITHUB_ENV
+
+      - name: Find library file (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $libFile = Get-ChildItem -Path "target/${{ matrix.target }}/release" -Filter "*.${{ matrix.extension }}" -File | Select-Object -First 1
+          echo "LIB_PATH=$($libFile.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "LIB_NAME=$($libFile.Name)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: library-${{ matrix.target }}
+          path: ${{ env.LIB_PATH }}
+          if-no-files-found: error
+
+  # Collect all artifacts into a single download
+  collect:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: libraries
+
+      - name: Display structure
+        run: ls -R libraries
+
+      - name: Upload combined artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-libraries
+          path: libraries/
