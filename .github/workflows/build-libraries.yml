@@ -12,21 +12,25 @@ jobs:
           - os: windows-latest
             target: i686-pc-windows-msvc
             extension: dll
+            bitness: 32
             
           # Windows 64-bit
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             extension: dll
+            bitness: 64
             
           # Linux 64-bit
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             extension: so
+            bitness: 64
             
           # macOS Apple Silicon
           - os: macos-latest
             target: aarch64-apple-darwin
             extension: dylib
+            bitness: 64
 
     runs-on: ${{ matrix.os }}
     
@@ -72,16 +76,22 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           LIB_FILE=$(find target/${{ matrix.target }}/release -name "lib*.${{ matrix.extension }}" -type f | head -n 1)
-          echo "LIB_PATH=$LIB_FILE" >> $GITHUB_ENV
-          echo "LIB_NAME=$(basename $LIB_FILE)" >> $GITHUB_ENV
+          BASE_NAME=$(basename $LIB_FILE | sed 's/^lib//' | sed 's/\.${{ matrix.extension }}$//')
+          NEW_NAME="${BASE_NAME}_${{ matrix.bitness }}.${{ matrix.extension }}"
+          cp "$LIB_FILE" "target/${{ matrix.target }}/release/$NEW_NAME"
+          echo "LIB_PATH=target/${{ matrix.target }}/release/$NEW_NAME" >> $GITHUB_ENV
+          echo "LIB_NAME=$NEW_NAME" >> $GITHUB_ENV
 
       - name: Find library file (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $libFile = Get-ChildItem -Path "target/${{ matrix.target }}/release" -Filter "*.${{ matrix.extension }}" -File | Select-Object -First 1
-          echo "LIB_PATH=$($libFile.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "LIB_NAME=$($libFile.Name)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $libFile = Get-ChildItem -Path "target/${{ matrix.target }}/release" -Filter "*.${{ matrix.extension }}" -File | Where-Object { $_.Name -notmatch '_\d+\.' } | Select-Object -First 1
+          $baseName = $libFile.BaseName
+          $newName = "${baseName}_${{ matrix.bitness }}.${{ matrix.extension }}"
+          Copy-Item -Path $libFile.FullName -Destination "target/${{ matrix.target }}/release/$newName"
+          echo "LIB_PATH=target/${{ matrix.target }}/release/$newName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "LIB_NAME=$newName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -100,11 +110,14 @@ jobs:
         with:
           path: libraries
 
-      - name: Display structure
-        run: ls -R libraries
+      - name: Flatten directory structure
+        run: |
+          mkdir -p all-libs
+          find libraries -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec cp {} all-libs/ \;
+          ls -lh all-libs/
 
       - name: Upload combined artifacts
         uses: actions/upload-artifact@v4
         with:
           name: all-libraries
-          path: libraries/
+          path: all-libs/
