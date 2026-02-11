@@ -88,7 +88,8 @@
 				<Item Name="whitespace.ctl" Type="VI" URL="/&lt;vilib&gt;/Utility/error.llb/whitespace.ctl"/>
 			</Item>
 			<Item Name="lvanlys.dll" Type="Document" URL="/&lt;resource&gt;/lvanlys.dll"/>
-			<Item Name="nominal_labview_ffi.dll" Type="Document" URL="../../target/i686-pc-windows-msvc/release/nominal_labview_ffi.dll"/>
+			<Item Name="nominal_labview_ffi.dll" Type="Document" URL="../nominal-streaming.bin/nominal_labview_ffi.dll"/>
+			<Item Name="nominal_labview_ffi_32.dll" Type="Document" URL="../nominal-streaming.bin/nominal_labview_ffi_32.dll"/>
 		</Item>
 		<Item Name="Build Specifications" Type="Build"/>
 	</Item>
