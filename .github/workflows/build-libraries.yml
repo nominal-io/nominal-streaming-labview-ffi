@@ -88,8 +88,14 @@ jobs:
           else
             NEW_NAME="${BASE_NAME}_${{ matrix.bitness }}.${{ matrix.extension }}"
           fi
-          cp "$LIB_FILE" "target/${{ matrix.target }}/release/$NEW_NAME"
-          echo "LIB_PATH=target/${{ matrix.target }}/release/$NEW_NAME" >> $GITHUB_ENV
+          
+          # Only copy if the name is different
+          if [ "$(basename $LIB_FILE)" != "$NEW_NAME" ]; then
+            cp "$LIB_FILE" "target/${{ matrix.target }}/release/$NEW_NAME"
+            echo "LIB_PATH=target/${{ matrix.target }}/release/$NEW_NAME" >> $GITHUB_ENV
+          else
+            echo "LIB_PATH=$LIB_FILE" >> $GITHUB_ENV
+          fi
           echo "LIB_NAME=$NEW_NAME" >> $GITHUB_ENV
 
       - name: Find library file (Windows)
@@ -103,8 +109,14 @@ jobs:
           } else {
             $newName = "${baseName}_${{ matrix.bitness }}.${{ matrix.extension }}"
           }
-          Copy-Item -Path $libFile.FullName -Destination "target/${{ matrix.target }}/release/$newName"
-          echo "LIB_PATH=target/${{ matrix.target }}/release/$newName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          
+          # Only copy if the name is different
+          if ($libFile.Name -ne $newName) {
+            Copy-Item -Path $libFile.FullName -Destination "target/${{ matrix.target }}/release/$newName"
+            echo "LIB_PATH=target/${{ matrix.target }}/release/$newName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          } else {
+            echo "LIB_PATH=$($libFile.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
           echo "LIB_NAME=$newName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload artifacts
