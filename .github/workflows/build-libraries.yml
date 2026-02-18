@@ -97,7 +97,6 @@ jobs:
             echo "LIB_PATH=$LIB_FILE" >> $GITHUB_ENV
           fi
           echo "LIB_NAME=$NEW_NAME" >> $GITHUB_ENV
-
       - name: Find library file (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -118,7 +117,6 @@ jobs:
             echo "LIB_PATH=$($libFile.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
           echo "LIB_NAME=$newName" | Out-File -FilePath $env:GITHUB_ENV -Append
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -141,7 +139,6 @@ jobs:
           mkdir -p all-libs
           find libraries -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec cp {} all-libs/ \;
           ls -lh all-libs/
-
       - name: Upload combined artifacts
         uses: actions/upload-artifact@v4
         with:
