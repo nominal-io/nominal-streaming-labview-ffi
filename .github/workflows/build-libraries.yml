@@ -13,35 +13,30 @@ jobs:
             target: i686-pc-windows-msvc
             extension: dll
             bitness: 32
-            glibc: ""
             
           # Windows 64-bit
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             extension: dll
             bitness: 64
-            glibc: ""
             
           # Windows ARM64
           - os: windows-latest
             target: aarch64-pc-windows-msvc
             extension: dll
             bitness: ""
-            glibc: ""
             
           # Linux 64-bit
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             extension: so
             bitness: 64
-            glibc: "2.17"
             
           # macOS Apple Silicon
           - os: macos-latest
             target: aarch64-apple-darwin
             extension: dylib
             bitness: 64
-            glibc: ""
 
     runs-on: ${{ matrix.os }}
     
@@ -62,14 +57,6 @@ jobs:
       - name: Install Nominal SDK
         run: pip install nominal
 
-      - name: Install OpenSSL (Linux only)
-        if: matrix.glibc != ''
-        run: sudo apt-get install -y pkg-config libssl-dev
-
-      - name: Install cargo-zigbuild (Linux only)
-        if: matrix.glibc != ''
-        run: pip install ziglang && cargo install cargo-zigbuild
-
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -89,17 +76,7 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build release
-        shell: bash
-        env:
-          OPENSSL_DIR: /usr
-          OPENSSL_LIB_DIR: /usr/lib/x86_64-linux-gnu
-          OPENSSL_INCLUDE_DIR: /usr/include
-        run: |
-          if [ -n "${{ matrix.glibc }}" ]; then
-            cargo zigbuild --release --target ${{ matrix.target }}.${{ matrix.glibc }}
-          else
-            cargo build --release --target ${{ matrix.target }}
-          fi
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Find library file (Unix)
         if: runner.os != 'Windows'
@@ -120,7 +97,6 @@ jobs:
             echo "LIB_PATH=$LIB_FILE" >> $GITHUB_ENV
           fi
           echo "LIB_NAME=$NEW_NAME" >> $GITHUB_ENV
-
       - name: Find library file (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -141,7 +117,6 @@ jobs:
             echo "LIB_PATH=$($libFile.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
           echo "LIB_NAME=$newName" | Out-File -FilePath $env:GITHUB_ENV -Append
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -164,7 +139,6 @@ jobs:
           mkdir -p all-libs
           find libraries -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec cp {} all-libs/ \;
           ls -lh all-libs/
-
       - name: Upload combined artifacts
         uses: actions/upload-artifact@v4
         with:
