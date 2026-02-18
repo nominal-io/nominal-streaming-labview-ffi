@@ -1,0 +1,84 @@
+name: Build Linux RT Shared Library
+
+on:
+  workflow_dispatch:
+    inputs:
+      glibc_version:
+        description: 'Target GLIBC version (e.g. 2.17, 2.28)'
+        required: false
+        default: '2.17'
+
+jobs:
+  build-rt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y perl make
+
+      - name: Install Zig + cargo-zigbuild
+        run: |
+          pip install ziglang
+          cargo install cargo-zigbuild
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: linux-rt-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: linux-rt-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: linux-rt-x86_64-unknown-linux-gnu-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release
+        env:
+          # Scoped to this target — picked up by cc-rs (used by openssl-sys vendored build)
+          CC_x86_64_unknown_linux_gnu: "zig cc -target x86_64-linux-gnu"
+          CXX_x86_64_unknown_linux_gnu: "zig c++ -target x86_64-linux-gnu"
+          CFLAGS_x86_64_unknown_linux_gnu: "-target x86_64-linux-gnu"
+          # Do NOT set OPENSSL_DIR/LIB_DIR/INCLUDE_DIR — those override vendored mode
+          OPENSSL_STATIC: "1"
+        run: |
+          cargo zigbuild --release --target x86_64-unknown-linux-gnu.${{ github.event.inputs.glibc_version }}
+
+      - name: Verify GLIBC symbols used
+        run: |
+          SO_FILE=$(find target/x86_64-unknown-linux-gnu/release -name "lib*.so" -type f | head -n 1)
+          echo "=== GLIBC version symbols in $SO_FILE ==="
+          objdump -p "$SO_FILE" | grep GLIBC || true
+
+      - name: Rename and stage artifact
+        run: |
+          SO_FILE=$(find target/x86_64-unknown-linux-gnu/release -name "lib*.so" -type f | head -n 1)
+          BASE_NAME=$(basename "$SO_FILE" | sed 's/^lib//' | sed 's/\.so$//')
+          NEW_NAME="${BASE_NAME}_64_glibc${{ github.event.inputs.glibc_version }}.so"
+          cp "$SO_FILE" "target/x86_64-unknown-linux-gnu/release/$NEW_NAME"
+          echo "LIB_PATH=target/x86_64-unknown-linux-gnu/release/$NEW_NAME" >> $GITHUB_ENV
+          echo "LIB_NAME=$NEW_NAME" >> $GITHUB_ENV
+          echo "Built: $NEW_NAME"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: library-linux-rt-x86_64-glibc${{ github.event.inputs.glibc_version }}
+          path: ${{ env.LIB_PATH }}
+          if-no-files-found: error
