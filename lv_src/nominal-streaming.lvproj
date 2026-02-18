@@ -22,12 +22,7 @@
 			<Item Name="Multi Channel Stream.vi" Type="VI" URL="../example/Multi Channel Stream.vi"/>
 			<Item Name="Multi Channel Stream - Many Channels.vi" Type="VI" URL="../example/Multi Channel Stream - Many Channels.vi"/>
 		</Item>
-		<Item Name="utility" Type="Folder">
-			<Item Name="Get UNIX Time in Nanoseconds.vi" Type="VI" URL="../utility/Get UNIX Time in Nanoseconds.vi"/>
-			<Item Name="Waveform to ns timestamp.vi" Type="VI" URL="../utility/Waveform to ns timestamp.vi"/>
-		</Item>
-		<Item Name="Channel.lvclass" Type="LVClass" URL="../Channel/Channel.lvclass"/>
-		<Item Name="Nominal Streaming.lvclass" Type="LVClass" URL="../Nominal Streaming/Nominal Streaming.lvclass"/>
+		<Item Name="Nominal Streaming.lvlib" Type="Library" URL="../Nominal Streaming/Nominal Streaming.lvlib"/>
 		<Item Name="Dependencies" Type="Dependencies">
 			<Item Name="vi.lib" Type="Folder">
 				<Item Name="1D String Array to Delimited String.vi" Type="VI" URL="/&lt;vilib&gt;/AdvancedString/1D String Array to Delimited String.vi"/>
@@ -125,7 +120,6 @@
 				<Item Name="Simple Error Handler.vi" Type="VI" URL="/&lt;vilib&gt;/Utility/error.llb/Simple Error Handler.vi"/>
 			</Item>
 			<Item Name="lvanlys.dll" Type="Document" URL="/&lt;resource&gt;/lvanlys.dll"/>
-			<Item Name="nominal_labview_ffi_64.dll" Type="Document" URL="../nominal-streaming.bin/nominal_labview_ffi_64.dll"/>
 		</Item>
 		<Item Name="Build Specifications" Type="Build"/>
 	</Item>
