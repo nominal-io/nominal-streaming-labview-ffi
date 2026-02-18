@@ -13,35 +13,30 @@ jobs:
             target: i686-pc-windows-msvc
             extension: dll
             bitness: 32
-            glibc: ""
             
           # Windows 64-bit
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             extension: dll
             bitness: 64
-            glibc: ""
             
           # Windows ARM64
           - os: windows-latest
             target: aarch64-pc-windows-msvc
             extension: dll
             bitness: ""
-            glibc: ""
             
           # Linux 64-bit
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             extension: so
             bitness: 64
-            glibc: "2.9"
             
           # macOS Apple Silicon
           - os: macos-latest
             target: aarch64-apple-darwin
             extension: dylib
             bitness: 64
-            glibc: ""
 
     runs-on: ${{ matrix.os }}
     
@@ -62,9 +57,9 @@ jobs:
       - name: Install Nominal SDK
         run: pip install nominal
 
-      - name: Install cargo-zigbuild (Linux only)
-        if: matrix.glibc != ''
-        run: pip install ziglang && cargo install cargo-zigbuild
+      - name: Install OpenSSL (Linux only)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y pkg-config libssl-dev
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -84,14 +79,15 @@ jobs:
           path: target
           key: ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Build release (Linux static)
+        if: runner.os == 'Linux'
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+
       - name: Build release
-        shell: bash
-        run: |
-          if [ -n "${{ matrix.glibc }}" ]; then
-            cargo zigbuild --release --target ${{ matrix.target }}.${{ matrix.glibc }}
-          else
-            cargo build --release --target ${{ matrix.target }}
-          fi
+        if: runner.os != 'Linux'
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Find library file (Unix)
         if: runner.os != 'Windows'
