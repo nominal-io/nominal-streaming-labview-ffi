@@ -10,9 +10,6 @@
 </Property>
 	<Item Name="Stream.lvclass" Type="LVClass" URL="../../Stream/Stream.lvclass"/>
 	<Item Name="Channel.lvclass" Type="LVClass" URL="../../Channel/Channel.lvclass"/>
-	<Item Name="library_path.vi" Type="VI" URL="../library_path.vi">
-		<Property Name="NI.LibItem.Scope" Type="Int">2</Property>
-	</Item>
 	<Item Name="Get UNIX Time in Nanoseconds.vi" Type="VI" URL="../Get UNIX Time in Nanoseconds.vi"/>
 	<Item Name="Waveform to ns timestamp.vi" Type="VI" URL="../Waveform to ns timestamp.vi"/>
 </Library>
