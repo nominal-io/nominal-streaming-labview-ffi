@@ -2,3 +2,5 @@ token.txt
 dataset.txt
 *.avro
 config.ini
+*.aliases
+*.lvlps

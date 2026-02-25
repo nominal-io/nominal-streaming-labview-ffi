@@ -20,8 +20,8 @@
 			</Item>
 			<Item Name="Simple Stream.vi" Type="VI" URL="../example/Simple Stream.vi"/>
 			<Item Name="Multi Channel Stream.vi" Type="VI" URL="../example/Multi Channel Stream.vi"/>
+			<Item Name="Multi Channel Stream - Many Channels.vi" Type="VI" URL="../example/Multi Channel Stream - Many Channels.vi"/>
 		</Item>
-		<Item Name="Multi Channel Stream - Many Channels.vi" Type="VI" URL="../example/Multi Channel Stream - Many Channels.vi"/>
 		<Item Name="Nominal Streaming.lvlib" Type="Library" URL="../Nominal Streaming/Nominal Streaming.lvlib"/>
 		<Item Name="Dependencies" Type="Dependencies">
 			<Item Name="vi.lib" Type="Folder">
@@ -120,7 +120,7 @@
 				<Item Name="Simple Error Handler.vi" Type="VI" URL="/&lt;vilib&gt;/Utility/error.llb/Simple Error Handler.vi"/>
 			</Item>
 			<Item Name="lvanlys.dll" Type="Document" URL="/&lt;resource&gt;/lvanlys.dll"/>
-			<Item Name="lib_nominal-streaming-lv_32.dll" Type="Document" URL="../bin/lib_nominal-streaming-lv_32.dll"/>
+			<Item Name="lib_nominal-streaming-lv_64.dll" Type="Document" URL="../bin/lib_nominal-streaming-lv_64.dll"/>
 		</Item>
 		<Item Name="Build Specifications" Type="Build"/>
 	</Item>
