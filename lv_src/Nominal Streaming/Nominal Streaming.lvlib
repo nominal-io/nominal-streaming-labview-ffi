@@ -12,4 +12,5 @@
 	<Item Name="Channel.lvclass" Type="LVClass" URL="../../Channel/Channel.lvclass"/>
 	<Item Name="Get UNIX Time in Nanoseconds.vi" Type="VI" URL="../Get UNIX Time in Nanoseconds.vi"/>
 	<Item Name="Waveform to ns timestamp.vi" Type="VI" URL="../Waveform to ns timestamp.vi"/>
+	<Item Name="Basic Function Generator (Absolute Time).vi" Type="VI" URL="../../Channel/Basic Function Generator (Absolute Time).vi"/>
 </Library>
