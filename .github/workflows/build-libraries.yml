@@ -43,6 +43,15 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # aws-lc-sys (the TLS crypto library) needs NASM on 32-bit Windows;
+      # 64-bit Windows uses prebuilt objects
+      - name: Install NASM (Windows 32-bit)
+        if: matrix.target == 'i686-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          choco install nasm --no-progress -y
+          echo "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+
       - name: Install Python (for PyO3)
         uses: actions/setup-python@v5
         with:
@@ -110,7 +119,15 @@ jobs:
   collect:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      # The branch tip, so the commit below can be pushed even if the branch moved during the run
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -127,3 +144,18 @@ jobs:
         with:
           name: all-libraries
           path: all-libs/
+
+      # LabVIEW loads the libraries checked in under lv_src/bin, so commit them
+      # back to the branch this run was started on
+      - name: Commit libraries to the branch
+        run: |
+          cp all-libs/* lv_src/bin/
+          git add lv_src/bin
+          if git diff --cached --quiet; then
+            echo "Libraries unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898182+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update shared libraries built from ${GITHUB_SHA::7}"
+          git push
