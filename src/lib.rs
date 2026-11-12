@@ -248,7 +248,17 @@ pub unsafe extern "C" fn nominal_init(
             return Err(ERROR_INVALID_PARAM);
         }
 
-        Ok(builder.build())
+        builder.try_build().map_err(|e| {
+            let code = match e {
+                StreamBuildError::File { .. } => ERROR_IO,
+                StreamBuildError::Invalid(_) | StreamBuildError::InvalidUrl { .. } => {
+                    ERROR_INVALID_PARAM
+                }
+                _ => ERROR_GENERIC,
+            };
+            set_last_error(format!("Failed to build stream: {}", e));
+            code
+        })
     });
 
     let stream = match stream {
@@ -537,6 +547,25 @@ mod tests {
         assert_eq!(PRODUCT_AGENT.name(), "nominal-labview");
         assert_eq!(PRODUCT_AGENT.version(), env!("CARGO_PKG_VERSION"));
         assert_ne!(*PRODUCT_AGENT, ProductAgent::default());
+    }
+
+    #[test]
+    fn test_init_reports_unopenable_file() {
+        std::env::remove_var("NOMINAL_TOKEN");
+        let rid = CString::new("ri.catalog.main.dataset.test").unwrap();
+        let path = CString::new("/nonexistent-dir/stream.avro").unwrap();
+        let mut handle = 0u64;
+        let code = unsafe {
+            nominal_init(
+                std::ptr::null(),
+                rid.as_ptr(),
+                path.as_ptr(),
+                &mut handle,
+            )
+        };
+        assert_eq!(code, ERROR_IO);
+        let error = LAST_ERROR.with(|e| e.borrow().clone()).unwrap();
+        assert!(error.contains("/nonexistent-dir/stream.avro"), "{error}");
     }
 
     #[test]
