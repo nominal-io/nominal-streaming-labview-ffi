@@ -49,6 +49,17 @@ static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
 });
 
 // ============================================================================
+// User Agent
+// ============================================================================
+
+const PRODUCT_AGENT_NAME: &str = "nominal-labview";
+
+static PRODUCT_AGENT: Lazy<ProductAgent> = Lazy::new(|| {
+    ProductAgent::new(PRODUCT_AGENT_NAME, env!("CARGO_PKG_VERSION"))
+        .expect("product agent name and crate version are valid")
+});
+
+// ============================================================================
 // Handle Types and Registries
 // ============================================================================
 
@@ -188,7 +199,8 @@ pub unsafe extern "C" fn nominal_init(
 
     // Build the stream
     let stream = RUNTIME.block_on(async {
-        let mut builder = NominalDatasetStreamBuilder::new();
+        let mut builder = NominalDatasetStreamBuilder::new()
+            .with_options(NominalStreamOpts::default().with_user_agent(PRODUCT_AGENT.clone()));
 
         // Determine if we should stream to core
         let should_stream_to_core = token_str.is_some() || std::env::var("NOMINAL_TOKEN").is_ok();
@@ -236,7 +248,17 @@ pub unsafe extern "C" fn nominal_init(
             return Err(ERROR_INVALID_PARAM);
         }
 
-        Ok(builder.build())
+        builder.try_build().map_err(|e| {
+            let code = match e {
+                StreamBuildError::File { .. } => ERROR_IO,
+                StreamBuildError::Invalid(_) | StreamBuildError::InvalidUrl { .. } => {
+                    ERROR_INVALID_PARAM
+                }
+                _ => ERROR_GENERIC,
+            };
+            set_last_error(format!("Failed to build stream: {}", e));
+            code
+        })
     });
 
     let stream = match stream {
@@ -380,7 +402,7 @@ pub unsafe extern "C" fn nominal_push_double_batch(
 
     // Get the writer state and push each point
     let state_guard = writer_arc.lock();
-    let mut writer = state_guard.stream.double_writer(&state_guard.descriptor);
+    let mut writer = state_guard.stream.double_writer(state_guard.descriptor.clone());
     
     for i in 0..count {
         let timestamp = Duration::from_nanos(timestamps_slice[i]);
@@ -518,6 +540,26 @@ mod tests {
     fn test_parse_tags_csv_empty() {
         let tags = parse_tags_csv("");
         assert_eq!(tags.len(), 0);
+    }
+
+    #[test]
+    fn test_product_agent() {
+        assert_eq!(PRODUCT_AGENT.name(), "nominal-labview");
+        assert_eq!(PRODUCT_AGENT.version(), env!("CARGO_PKG_VERSION"));
+        assert_ne!(*PRODUCT_AGENT, ProductAgent::default());
+    }
+
+    #[test]
+    fn test_init_reports_unopenable_file() {
+        std::env::remove_var("NOMINAL_TOKEN");
+        let rid = CString::new("ri.catalog.main.dataset.test").unwrap();
+        let path = CString::new("/nonexistent-dir/stream.avro").unwrap();
+        let mut handle = 0u64;
+        let code =
+            unsafe { nominal_init(std::ptr::null(), rid.as_ptr(), path.as_ptr(), &mut handle) };
+        assert_eq!(code, ERROR_IO);
+        let error = LAST_ERROR.with(|e| e.borrow().clone()).unwrap();
+        assert!(error.contains("/nonexistent-dir/stream.avro"), "{error}");
     }
 
     #[test]
