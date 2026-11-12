@@ -380,7 +380,7 @@ pub unsafe extern "C" fn nominal_push_double_batch(
 
     // Get the writer state and push each point
     let state_guard = writer_arc.lock();
-    let mut writer = state_guard.stream.double_writer(&state_guard.descriptor);
+    let mut writer = state_guard.stream.double_writer(state_guard.descriptor.clone());
     
     for i in 0..count {
         let timestamp = Duration::from_nanos(timestamps_slice[i]);
