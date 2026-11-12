@@ -555,14 +555,8 @@ mod tests {
         let rid = CString::new("ri.catalog.main.dataset.test").unwrap();
         let path = CString::new("/nonexistent-dir/stream.avro").unwrap();
         let mut handle = 0u64;
-        let code = unsafe {
-            nominal_init(
-                std::ptr::null(),
-                rid.as_ptr(),
-                path.as_ptr(),
-                &mut handle,
-            )
-        };
+        let code =
+            unsafe { nominal_init(std::ptr::null(), rid.as_ptr(), path.as_ptr(), &mut handle) };
         assert_eq!(code, ERROR_IO);
         let error = LAST_ERROR.with(|e| e.borrow().clone()).unwrap();
         assert!(error.contains("/nonexistent-dir/stream.avro"), "{error}");
