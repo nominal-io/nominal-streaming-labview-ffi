@@ -49,6 +49,17 @@ static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
 });
 
 // ============================================================================
+// User Agent
+// ============================================================================
+
+const PRODUCT_AGENT_NAME: &str = "nominal-labview";
+
+static PRODUCT_AGENT: Lazy<ProductAgent> = Lazy::new(|| {
+    ProductAgent::new(PRODUCT_AGENT_NAME, env!("CARGO_PKG_VERSION"))
+        .expect("product agent name and crate version are valid")
+});
+
+// ============================================================================
 // Handle Types and Registries
 // ============================================================================
 
@@ -188,7 +199,8 @@ pub unsafe extern "C" fn nominal_init(
 
     // Build the stream
     let stream = RUNTIME.block_on(async {
-        let mut builder = NominalDatasetStreamBuilder::new();
+        let mut builder = NominalDatasetStreamBuilder::new()
+            .with_options(NominalStreamOpts::default().with_user_agent(PRODUCT_AGENT.clone()));
 
         // Determine if we should stream to core
         let should_stream_to_core = token_str.is_some() || std::env::var("NOMINAL_TOKEN").is_ok();
@@ -518,6 +530,13 @@ mod tests {
     fn test_parse_tags_csv_empty() {
         let tags = parse_tags_csv("");
         assert_eq!(tags.len(), 0);
+    }
+
+    #[test]
+    fn test_product_agent() {
+        assert_eq!(PRODUCT_AGENT.name(), "nominal-labview");
+        assert_eq!(PRODUCT_AGENT.version(), env!("CARGO_PKG_VERSION"));
+        assert_ne!(*PRODUCT_AGENT, ProductAgent::default());
     }
 
     #[test]
