@@ -25,3 +25,5 @@ target
 
 /target
 lv_src/nominal-streaming.aliases
+
+*.lvprojstate
